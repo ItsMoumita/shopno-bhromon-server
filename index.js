@@ -1,7 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId  } = require("mongodb");
 const admin = require("firebase-admin");
 
 const app = express();
@@ -227,9 +227,91 @@ app.put("/api/users/:email/role", verifyFirebaseToken, verifyAdmin, async (req, 
 
 
 
+    // Get all packages for HOME PAGE (with optional limit)
+app.get("/api/packages", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 0;
+
+    const cursor = packagesCollection
+      .find()
+      .sort({ createdAt: -1 }); // latest first
+
+    const packages = limit ? await cursor.limit(limit).toArray() : await cursor.toArray();
+
+    res.json(packages);
+  } catch (err) {
+    console.error("❌ Error fetching packages:", err.message);
+    res.status(500).json({ error: "Failed to fetch packages" });
+  }
+});
 
 
 
+
+// Update package
+app.put("/api/packages/:id", verifyFirebaseToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const updates = req.body;
+    delete updates._id;
+
+    const result = await packagesCollection.updateOne(
+      { _id: new ObjectId(id) },   // ✅ match by ObjectId
+      { $set: { ...updates, updatedAt: new Date() } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: "Package not found" });
+    }
+
+    res.json({ message: "✅ Package updated successfully" });
+  } catch (err) {
+    console.error("❌ Error updating package:", err.message);
+    res.status(500).json({ error: "Failed to update package" });
+  }
+});
+
+// Delete package (string IDs)
+app.delete("/api/packages/:id", verifyFirebaseToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const result = await packagesCollection.deleteOne({ _id: new ObjectId(id) });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: "Package not found" });
+    }
+
+    res.json({ message: "✅ Package deleted successfully" });
+  } catch (err) {
+    console.error("❌ Error deleting package:", err.message);
+    res.status(500).json({ error: "Failed to delete package" });
+  }
+});
+
+
+
+// Get single package by ID
+app.get("/api/packages/:id", async (req, res) => {
+  try {
+    
+    const id = req.params.id;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid package ID format" });
+    }
+
+    const pkg = await packagesCollection.findOne({ _id: new ObjectId(id) });
+
+    if (!pkg) {
+      return res.status(404).json({ message: "Package not found" });
+    }
+
+    res.json(pkg);
+  } catch (err) {
+    console.error("❌ Error fetching single package:", err.message);
+    res.status(500).json({ error: "Failed to fetch package details" });
+  }
+});
 
 
 
