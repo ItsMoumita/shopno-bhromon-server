@@ -8,7 +8,12 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Middlewares
-app.use(cors());
+app.use(cors({
+  origin:[
+    'http://localhost:5173',
+  ],
+  credentials: true,
+}));
 app.use(express.json());
 
 app.get("/", (req, res) => {
@@ -215,37 +220,55 @@ async function run() {
       }
     });
 
-    // Get all packages
-    app.get("/api/packages", verifyFirebaseToken, async (req, res) => {
-      try {
-        const packages = await packagesCollection.find().toArray();
-        res.json(packages);
-      } catch (err) {
-        console.error("❌ Error fetching packages:", err);
-        res.status(500).json({ error: "Failed to fetch packages" });
-      }
-    });
+    // // Get all packages
+    // app.get("/api/packages",  async (req, res) => {
+    //   try {
+    //     const packages = await packagesCollection.find().toArray();
+    //     res.json(packages);
+    //   } catch (err) {
+    //     console.error("❌ Error fetching packages:", err);
+    //     res.status(500).json({ error: "Failed to fetch packages" });
+    //   }
+    // });
 
 
 
-    // Get all packages for HOME PAGE (with optional limit)
+    // // Get all packages for HOME PAGE (with optional limit)
+    // app.get("/api/packages", async (req, res) => {
+    //   try {
+    //     const limit = parseInt(req.query.limit) || 0;
+
+    //     const packages = await packagesCollection
+    //       .find()
+    //       .sort({ createdAt: -1 })   // newest first
+    //       .limit(limit)
+    //       .toArray();
+
+    //     res.json(packages);
+    //   } catch (err) {
+    //     console.error("❌ Error fetching packages:", err.message);
+    //     res.status(500).json({ error: "Failed to fetch packages" });
+    //   }
+    // });
+
+
+
     app.get("/api/packages", async (req, res) => {
-      try {
-        const limit = parseInt(req.query.limit) || 0;
+  try {
+    const limit = parseInt(req.query.limit) || 0;
 
-        const packages = await packagesCollection
-          .find()
-          .sort({ createdAt: -1 })   // newest first
-          .limit(limit)
-          .toArray();
+    const packages = await packagesCollection
+      .find()
+      .sort({ createdAt: -1 })   // newest first
+      .limit(limit)
+      .toArray();
 
-        res.json(packages);
-      } catch (err) {
-        console.error("❌ Error fetching packages:", err.message);
-        res.status(500).json({ error: "Failed to fetch packages" });
-      }
-    });
-
+    res.json(packages);
+  } catch (err) {
+    console.error("❌ Error fetching packages:", err.message);
+    res.status(500).json({ error: "Failed to fetch packages" });
+  }
+});
 
 
 
@@ -379,7 +402,58 @@ async function run() {
 });
 
 
+// update resort 
+app.put("/api/resorts/:id", verifyFirebaseToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const updates = req.body;
 
+    // Prevent _id modification
+    delete updates._id;
+
+    // Convert id to ObjectId
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid resort ID" });
+    }
+
+    const result = await resortsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { ...updates, updatedAt: new Date() } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: "Resort not found" });
+    }
+
+    res.json({ message: "Resort updated successfully" });
+  } catch (err) {
+    console.error("Error updating resort:", err);
+    res.status(500).json({ error: "Failed to update resort" });
+  }
+});
+
+
+// delete resort 
+app.delete("/api/resorts/:id", verifyFirebaseToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid resort ID" });
+    }
+
+    const result = await resortsCollection.deleteOne({ _id: new ObjectId(id) });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: "Resort not found" });
+    }
+
+    res.json({ message: "Resort deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting resort:", err);
+    res.status(500).json({ error: "Failed to delete resort" });
+  }
+});
 
 
 
