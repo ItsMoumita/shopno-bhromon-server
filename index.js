@@ -538,7 +538,7 @@ app.post("/api/bookings/confirm", verifyFirebaseToken, async (req, res) => {
     // Optional: verify amounts match
     if (paymentIntent.amount !== expectedAmount) {
       console.warn("Payment amount mismatch:", paymentIntent.amount, expectedAmount);
-      // You may decide to fail here or log for manual review
+      
     }
 
     // Create booking record
