@@ -3,7 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const admin = require("firebase-admin");
-
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -65,6 +65,7 @@ async function run() {
     usersCollection = db.collection("users");
     packagesCollection = db.collection("packages");
     resortsCollection = db.collection("resorts");
+    bookingsCollection = db.collection("bookings");
 
     console.log("✅ Connected to MongoDB Atlas!");
 
@@ -220,36 +221,6 @@ async function run() {
       }
     });
 
-    // // Get all packages
-    // app.get("/api/packages",  async (req, res) => {
-    //   try {
-    //     const packages = await packagesCollection.find().toArray();
-    //     res.json(packages);
-    //   } catch (err) {
-    //     console.error("❌ Error fetching packages:", err);
-    //     res.status(500).json({ error: "Failed to fetch packages" });
-    //   }
-    // });
-
-
-
-    // // Get all packages for HOME PAGE (with optional limit)
-    // app.get("/api/packages", async (req, res) => {
-    //   try {
-    //     const limit = parseInt(req.query.limit) || 0;
-
-    //     const packages = await packagesCollection
-    //       .find()
-    //       .sort({ createdAt: -1 })   // newest first
-    //       .limit(limit)
-    //       .toArray();
-
-    //     res.json(packages);
-    //   } catch (err) {
-    //     console.error("❌ Error fetching packages:", err.message);
-    //     res.status(500).json({ error: "Failed to fetch packages" });
-    //   }
-    // });
 
 
 
@@ -359,16 +330,28 @@ async function run() {
       }
     });
 
-    // --- GET All Resorts ---
-    app.get("/api/resorts", async (req, res) => {
-      try {
-        const resorts = await resortsCollection.find().sort({ createdAt: -1 }).toArray();
-        res.json(resorts);
-      } catch (err) {
-        console.error("❌ Error fetching resorts:", err);
-        res.status(500).json({ error: "Failed to fetch resorts" });
+    // Get all resorts (for carousel and listing)
+app.get("/api/resorts", async (req, res) => {
+  try {
+  //  support limit query param for carousel
+    const limit = parseInt(req.query.limit) || 0;
+
+    const cursor = resortsCollection.find().sort({ createdAt: -1 });
+    const resorts = limit ? await cursor.limit(limit).toArray() : await cursor.toArray();
+
+    
+    resorts.forEach((r) => {
+      if (Array.isArray(r.amenities)) {
+        r.amenities = r.amenities.map((a) => a.trim());
       }
     });
+
+    res.json(resorts);
+  } catch (err) {
+    console.error("❌ Error fetching resorts:", err);
+    res.status(500).json({ error: "Failed to fetch resorts" });
+  }
+});
 
     // --- GET Resort by ID ---
     app.get("/api/resorts/:id", async (req, res) => {
@@ -458,8 +441,285 @@ app.delete("/api/resorts/:id", verifyFirebaseToken, async (req, res) => {
 
 
 
+// ----------------------payment api-------------------------------------------------- 
+
+// Create PaymentIntent (authenticated)
+app.post("/api/create-payment-intent", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { itemType, itemId, nights, guests, startDate } = req.body;
+    if (!itemType || !itemId) return res.status(400).json({ error: "Missing itemType or itemId" });
+
+    // Load item (package or resort)
+    let itemDoc = null;
+    if (ObjectId.isValid(itemId)) {
+      const oid = new ObjectId(itemId);
+      itemDoc = itemType === "package"
+        ? await packagesCollection.findOne({ _id: oid })
+        : await resortsCollection.findOne({ _id: oid });
+    } else {
+      itemDoc = itemType === "package"
+        ? await packagesCollection.findOne({ _id: itemId })
+        : await resortsCollection.findOne({ _id: itemId });
+    }
+    if (!itemDoc) return res.status(404).json({ error: "Item not found" });
+
+    // Compute amount (in display currency)
+    // packages: itemDoc.price (per person)
+    // resorts: itemDoc.pricePerNight
+    let amountRaw = 0;
+    if (itemType === "package") {
+      const perPerson = Number(itemDoc.price || 0);
+      amountRaw = perPerson * (Number(guests) || 1);
+    } else {
+      const perNight = Number(itemDoc.pricePerNight || itemDoc.price || 0);
+      amountRaw = perNight * (Number(nights) || 1);
+    }
+
+    // Currency and smallest unit conversion
+    const currency = process.env.STRIPE_CURRENCY || "usd"; // change if needed
+    // For most currencies: multiply by 100 to get cents/paisa
+    const amount = Math.round(amountRaw * 100);
+
+    // Create PaymentIntent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount,
+      currency,
+      metadata: {
+        itemType,
+        itemId: itemDoc._id.toString(),
+        userEmail: req.firebaseUser?.email || "",
+      },
+    });
+
+    res.json({ clientSecret: paymentIntent.client_secret, amount, currency });
+  } catch (err) {
+    console.error("Error creating payment intent:", err);
+    res.status(500).json({ error: "Failed to create payment intent" });
+  }
+});
+
+// Confirm booking after payment (authenticated)
+// This route verifies payment intent succeeded and then creates a booking record.
+app.post("/api/bookings/confirm", verifyFirebaseToken, async (req, res) => {
+  try {
+    const { paymentIntentId, itemType, itemId, nights, guests, startDate, note } = req.body;
+    if (!paymentIntentId || !itemType || !itemId) return res.status(400).json({ error: "Missing fields" });
+
+    // Retrieve PaymentIntent from Stripe
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (!paymentIntent || paymentIntent.status !== "succeeded") {
+      return res.status(400).json({ error: "Payment not successful" });
+    }
+
+    // Load the item to reference details and verify amount server-side
+    let itemDoc = null;
+    if (ObjectId.isValid(itemId)) {
+      const oid = new ObjectId(itemId);
+      itemDoc = itemType === "package"
+        ? await packagesCollection.findOne({ _id: oid })
+        : await resortsCollection.findOne({ _id: oid });
+    } else {
+      itemDoc = itemType === "package"
+        ? await packagesCollection.findOne({ _id: itemId })
+        : await resortsCollection.findOne({ _id: itemId });
+    }
+    if (!itemDoc) return res.status(404).json({ error: "Item not found" });
+
+    let expectedAmountRaw = 0;
+    if (itemType === "package") {
+      const perPerson = Number(itemDoc.price || 0);
+      expectedAmountRaw = perPerson * (Number(guests) || 1);
+    } else {
+      const perNight = Number(itemDoc.pricePerNight || itemDoc.price || 0);
+      expectedAmountRaw = perNight * (Number(nights) || 1);
+    }
+    const expectedAmount = Math.round(expectedAmountRaw * 100);
+
+    // Optional: verify amounts match
+    if (paymentIntent.amount !== expectedAmount) {
+      console.warn("Payment amount mismatch:", paymentIntent.amount, expectedAmount);
+      // You may decide to fail here or log for manual review
+    }
+
+    // Create booking record
+    const booking = {
+      userId: req.firebaseUser?.uid || null,
+      userEmail: req.firebaseUser?.email || null,
+      itemType,
+      itemId: itemDoc._id.toString(),
+      itemTitle: itemDoc.title || itemDoc.name || "",
+      startDate: startDate ? new Date(startDate) : null,
+      nights: nights ? Number(nights) : null,
+      guests: guests ? Number(guests) : 1,
+      note: note || "",
+      amount: paymentIntent.amount / 100,
+      currency: paymentIntent.currency,
+      paymentId: paymentIntent.id,
+      status: "paid",
+      createdAt: new Date(),
+    };
+
+    const result = await bookingsCollection.insertOne(booking);
+    res.json({ message: "Booking confirmed", bookingId: result.insertedId.toString() });
+  } catch (err) {
+    console.error("Error confirming booking:", err);
+    res.status(500).json({ error: "Failed to confirm booking" });
+  }
+});
 
 
+
+
+// ---------------api for bookings---------------------------------------------- 
+
+// require ObjectId at top of file (already in your server)
+// const { ObjectId } = require("mongodb");
+
+//
+// BOOKINGS API
+//
+/**
+ * GET /api/bookings/user
+ * - Returns bookings for the currently authenticated user
+ */
+app.get("/api/bookings/user", verifyFirebaseToken, async (req, res) => {
+  try {
+    const email = req.firebaseUser?.email;
+    if (!email) return res.status(400).json({ error: "Invalid user" });
+
+    const docs = await bookingsCollection.find({ userEmail: email }).sort({ createdAt: -1 }).toArray();
+
+    // Normalize _id -> string and dates -> ISO
+    const bookings = docs.map((b) => ({
+      ...b,
+      _id: b._id?.toString?.() ?? b._id,
+      createdAt: b.createdAt ? b.createdAt.toISOString() : null,
+      startDate: b.startDate ? new Date(b.startDate).toISOString() : null,
+    }));
+
+    res.json(bookings);
+  } catch (err) {
+    console.error("❌ Error fetching user bookings:", err);
+    res.status(500).json({ error: "Failed to fetch bookings" });
+  }
+});
+
+/**
+ * DELETE /api/bookings/:id
+ * - Allow user to cancel their own booking OR an admin to delete
+ */
+app.delete("/api/bookings/:id", verifyFirebaseToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid booking id" });
+
+    const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
+    if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+    const requesterEmail = req.firebaseUser?.email;
+    // owner allowed OR admin allowed
+    if (booking.userEmail !== requesterEmail) {
+      const currentUser = await usersCollection.findOne({ email: requesterEmail });
+      if (!currentUser || currentUser.role !== "admin") {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+
+    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(id) });
+    if (result.deletedCount === 0) {
+      return res.status(500).json({ error: "Failed to delete booking" });
+    }
+
+    res.json({ message: "Booking removed" });
+  } catch (err) {
+    console.error("❌ Error deleting booking:", err);
+    res.status(500).json({ error: "Failed to delete booking" });
+  }
+});
+
+/**
+ * GET /api/bookings
+ * - Admin route: list all bookings
+ * - supports optional pagination: ?page=1&limit=20
+ */
+app.get("/api/bookings", verifyFirebaseToken, verifyAdmin, async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.max(1, parseInt(req.query.limit) || 20);
+    const skip = (page - 1) * limit;
+
+    const total = await bookingsCollection.countDocuments();
+    const docs = await bookingsCollection.find().sort({ createdAt: -1 }).skip(skip).limit(limit).toArray();
+
+    const bookings = docs.map((b) => ({
+      ...b,
+      _id: b._id?.toString?.() ?? b._id,
+      createdAt: b.createdAt ? b.createdAt.toISOString() : null,
+      startDate: b.startDate ? new Date(b.startDate).toISOString() : null,
+    }));
+
+    res.json({
+      bookings,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
+  } catch (err) {
+    console.error("❌ Error fetching all bookings:", err);
+    res.status(500).json({ error: "Failed to fetch bookings" });
+  }
+});
+
+/**
+ * GET /api/bookings/:id
+ * - Admin route: get single booking by id
+ */
+app.get("/api/bookings/:id", verifyFirebaseToken, verifyAdmin, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid booking id" });
+
+    const b = await bookingsCollection.findOne({ _id: new ObjectId(id) });
+    if (!b) return res.status(404).json({ error: "Booking not found" });
+
+    const booking = {
+      ...b,
+      _id: b._id?.toString?.() ?? b._id,
+      createdAt: b.createdAt ? b.createdAt.toISOString() : null,
+      startDate: b.startDate ? new Date(b.startDate).toISOString() : null,
+    };
+    res.json(booking);
+  } catch (err) {
+    console.error("❌ Error fetching booking by id:", err);
+    res.status(500).json({ error: "Failed to fetch booking" });
+  }
+});
+
+/**
+ * PUT /api/bookings/:id/status
+ * - Admin: update booking status (pending/confirmed/cancelled/completed)
+ */
+app.put("/api/bookings/:id/status", verifyFirebaseToken, verifyAdmin, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { status } = req.body;
+    if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid booking id" });
+    const allowed = ["pending", "confirmed", "cancelled", "completed"];
+    if (!allowed.includes(status)) return res.status(400).json({ error: "Invalid status" });
+
+    const result = await bookingsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status, updatedAt: new Date() } }
+    );
+
+    if (result.matchedCount === 0) return res.status(404).json({ error: "Booking not found" });
+
+    res.json({ message: "Booking status updated" });
+  } catch (err) {
+    console.error("❌ Error updating booking status:", err);
+    res.status(500).json({ error: "Failed to update booking status" });
+  }
+});
 
 
 
