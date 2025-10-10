@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const crypto = require("crypto");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const admin = require("firebase-admin");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
@@ -720,6 +721,151 @@ app.put("/api/bookings/:id/status", verifyFirebaseToken, verifyAdmin, async (req
     res.status(500).json({ error: "Failed to update booking status" });
   }
 });
+
+
+
+
+
+
+// Admin overview: counts and simple percent changes
+app.get("/api/admin/overview", verifyFirebaseToken, verifyAdmin, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+
+    const end = new Date(); // now
+    const start = new Date(end);
+    start.setDate(end.getDate() - days);
+
+    const prevEnd = new Date(start);
+    const prevStart = new Date(prevEnd);
+    prevStart.setDate(prevEnd.getDate() - days);
+
+    // safe count helper
+    const safeCount = async (collection, filter = {}) => {
+      if (!collection) return 0;
+      try {
+        return await collection.countDocuments(filter);
+      } catch (err) {
+        console.error("countDocuments error:", err);
+        return 0;
+      }
+    };
+
+    // Bookings in current and previous periods (assumes bookingsCollection has createdAt: Date)
+    const totalBookings = await safeCount(bookingsCollection, {
+      createdAt: { $gte: start, $lt: end },
+    });
+    const prevBookings = await safeCount(bookingsCollection, {
+      createdAt: { $gte: prevStart, $lt: prevEnd },
+    });
+
+    // Users
+    const totalUsers = await safeCount(usersCollection);
+    const newUsers = await safeCount(usersCollection, {
+      createdAt: { $gte: start, $lt: end },
+    });
+    const prevNewUsers = await safeCount(usersCollection, {
+      createdAt: { $gte: prevStart, $lt: prevEnd },
+    });
+
+    // Packages & Resorts counts
+    const packagesCount = await safeCount(packagesCollection);
+    const resortsCount = await safeCount(resortsCollection);
+
+    // percent change helper
+    const percentChange = (current, previous) => {
+      if (previous === 0) return current === 0 ? 0 : 100;
+      return Math.round(((current - previous) / previous) * 100);
+    };
+
+    const bookingsChangePercent = percentChange(totalBookings, prevBookings);
+    const usersChangePercent = percentChange(newUsers, prevNewUsers);
+
+    res.json({
+      totalBookings,
+      bookingsChangePercent,
+      totalUsers,
+      newUsers,
+      usersChangePercent,
+      packagesCount,
+      resortsCount,
+    });
+  } catch (err) {
+    console.error("❌ Error building admin overview:", err.stack || err);
+    res.status(500).json({ error: "Failed to fetch admin overview" });
+  }
+});
+
+
+
+
+
+
+
+
+// Admin: get bookings (paginated or limited)
+app.get("/api/bookings", verifyFirebaseToken, verifyAdmin, async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.max(1, parseInt(req.query.limit) || 10);
+    const skip = (page - 1) * limit;
+
+    const total = await bookingsCollection.countDocuments();
+    const docs = await bookingsCollection.find().sort({ createdAt: -1 }).skip(skip).limit(limit).toArray();
+
+    const bookings = docs.map(b => ({
+      ...b,
+      _id: b._id?.toString?.() ?? b._id,
+      createdAt: b.createdAt ? b.createdAt.toISOString() : null,
+      startDate: b.startDate ? new Date(b.startDate).toISOString() : null,
+    }));
+
+    res.json({ bookings, total, page, pages: Math.ceil(total / limit) });
+  } catch (err) {
+    console.error("Error fetching bookings:", err);
+    res.status(500).json({ error: "Failed to fetch bookings" });
+  }
+});
+
+
+
+
+// Delete booking - allow admin or owner (owner authenticated)
+app.delete("/api/bookings/:id", verifyFirebaseToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid booking id" });
+
+    const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
+    if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+    // owner or admin
+    const requesterEmail = req.firebaseUser?.email;
+    if (booking.userEmail !== requesterEmail) {
+      const currentUser = await usersCollection.findOne({ email: requesterEmail });
+      if (!currentUser || currentUser.role !== "admin") {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+
+    const result = await bookingsCollection.deleteOne({ _id: new ObjectId(id) });
+    if (result.deletedCount === 0) return res.status(500).json({ error: "Failed to delete" });
+
+    res.json({ message: "Booking deleted" });
+  } catch (err) {
+    console.error("Error deleting booking:", err);
+    res.status(500).json({ error: "Failed to delete booking" });
+  }
+});
+
+
+
+
+
+
+
+
+
 
 
 
