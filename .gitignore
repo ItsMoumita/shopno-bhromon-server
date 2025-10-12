@@ -1,3 +1,4 @@
 node_modules
 .env
 shopno-bhromon-firebase-adminsdk-fbsvc-e341be1522.json
+.vercel

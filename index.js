@@ -12,6 +12,7 @@ const port = process.env.PORT || 5000;
 app.use(cors({
   origin:[
     'http://localhost:5173',
+    'https://shopno-bhromon.web.app'
   ],
   credentials: true,
 }));
@@ -465,8 +466,7 @@ app.post("/api/create-payment-intent", verifyFirebaseToken, async (req, res) => 
     if (!itemDoc) return res.status(404).json({ error: "Item not found" });
 
     // Compute amount (in display currency)
-    // packages: itemDoc.price (per person)
-    // resorts: itemDoc.pricePerNight
+    
     let amountRaw = 0;
     if (itemType === "package") {
       const perPerson = Number(itemDoc.price || 0);
@@ -477,8 +477,8 @@ app.post("/api/create-payment-intent", verifyFirebaseToken, async (req, res) => 
     }
 
     // Currency and smallest unit conversion
-    const currency = process.env.STRIPE_CURRENCY || "usd"; // change if needed
-    // For most currencies: multiply by 100 to get cents/paisa
+    const currency = process.env.STRIPE_CURRENCY || "usd"; 
+   
     const amount = Math.round(amountRaw * 100);
 
     // Create PaymentIntent
@@ -500,7 +500,6 @@ app.post("/api/create-payment-intent", verifyFirebaseToken, async (req, res) => 
 });
 
 // Confirm booking after payment (authenticated)
-// This route verifies payment intent succeeded and then creates a booking record.
 app.post("/api/bookings/confirm", verifyFirebaseToken, async (req, res) => {
   try {
     const { paymentIntentId, itemType, itemId, nights, guests, startDate, note } = req.body;
@@ -536,7 +535,7 @@ app.post("/api/bookings/confirm", verifyFirebaseToken, async (req, res) => {
     }
     const expectedAmount = Math.round(expectedAmountRaw * 100);
 
-    // Optional: verify amounts match
+    //  verify amounts match
     if (paymentIntent.amount !== expectedAmount) {
       console.warn("Payment amount mismatch:", paymentIntent.amount, expectedAmount);
       
@@ -573,12 +572,6 @@ app.post("/api/bookings/confirm", verifyFirebaseToken, async (req, res) => {
 
 // ---------------api for bookings---------------------------------------------- 
 
-// require ObjectId at top of file (already in your server)
-// const { ObjectId } = require("mongodb");
-
-//
-// BOOKINGS API
-//
 /**
  * GET /api/bookings/user
  * - Returns bookings for the currently authenticated user
@@ -700,27 +693,27 @@ app.get("/api/bookings/:id", verifyFirebaseToken, verifyAdmin, async (req, res) 
  * PUT /api/bookings/:id/status
  * - Admin: update booking status (pending/confirmed/cancelled/completed)
  */
-app.put("/api/bookings/:id/status", verifyFirebaseToken, verifyAdmin, async (req, res) => {
-  try {
-    const id = req.params.id;
-    const { status } = req.body;
-    if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid booking id" });
-    const allowed = ["pending", "confirmed", "cancelled", "completed"];
-    if (!allowed.includes(status)) return res.status(400).json({ error: "Invalid status" });
+// app.put("/api/bookings/:id/status", verifyFirebaseToken, verifyAdmin, async (req, res) => {
+//   try {
+//     const id = req.params.id;
+//     const { status } = req.body;
+//     if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid booking id" });
+//     const allowed = ["pending", "confirmed", "cancelled", "completed"];
+//     if (!allowed.includes(status)) return res.status(400).json({ error: "Invalid status" });
 
-    const result = await bookingsCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { status, updatedAt: new Date() } }
-    );
+//     const result = await bookingsCollection.updateOne(
+//       { _id: new ObjectId(id) },
+//       { $set: { status, updatedAt: new Date() } }
+//     );
 
-    if (result.matchedCount === 0) return res.status(404).json({ error: "Booking not found" });
+//     if (result.matchedCount === 0) return res.status(404).json({ error: "Booking not found" });
 
-    res.json({ message: "Booking status updated" });
-  } catch (err) {
-    console.error("❌ Error updating booking status:", err);
-    res.status(500).json({ error: "Failed to update booking status" });
-  }
-});
+//     res.json({ message: "Booking status updated" });
+//   } catch (err) {
+//     console.error("❌ Error updating booking status:", err);
+//     res.status(500).json({ error: "Failed to update booking status" });
+//   }
+// });
 
 
 
