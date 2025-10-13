@@ -445,13 +445,13 @@ app.delete("/api/resorts/:id", verifyFirebaseToken, async (req, res) => {
 
 // ----------------------payment api-------------------------------------------------- 
 
-// Create PaymentIntent (authenticated)
+// Create PaymentIntent 
 app.post("/api/create-payment-intent", verifyFirebaseToken, async (req, res) => {
   try {
     const { itemType, itemId, nights, guests, startDate } = req.body;
     if (!itemType || !itemId) return res.status(400).json({ error: "Missing itemType or itemId" });
 
-    // Load item (package or resort)
+    // Load item 
     let itemDoc = null;
     if (ObjectId.isValid(itemId)) {
       const oid = new ObjectId(itemId);
@@ -574,7 +574,7 @@ app.post("/api/bookings/confirm", verifyFirebaseToken, async (req, res) => {
 
 /**
  * GET /api/bookings/user
- * - Returns bookings for the currently authenticated user
+
  */
 app.get("/api/bookings/user", verifyFirebaseToken, async (req, res) => {
   try {
