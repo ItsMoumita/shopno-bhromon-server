@@ -855,7 +855,10 @@ app.delete("/bookings/:id", verifyFirebaseToken, async (req, res) => {
 
 
 
-
+// Start server
+app.listen(port, () => {
+  console.log(`🚀 Travel Server running on http://localhost:${port}`);
+});
 
 
 
@@ -868,7 +871,3 @@ app.delete("/bookings/:id", verifyFirebaseToken, async (req, res) => {
 }
 run().catch(console.dir);
 
-// Start server
-app.listen(port, () => {
-  console.log(`🚀 Travel Server running on http://localhost:${port}`);
-});
