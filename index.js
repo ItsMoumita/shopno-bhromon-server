@@ -92,7 +92,7 @@ async function run() {
     };
 
     // --- ROUTES ---
-    app.post("/api/users", async (req, res) => {
+    app.post("/users", async (req, res) => {
       try {
         const { name, email, profilePic } = req.body;
         if (!email) {
@@ -124,7 +124,7 @@ async function run() {
 
 
     // Get user by email (for dashboard)
-    app.get("/api/users/:email", verifyFirebaseToken, async (req, res) => {
+    app.get("/users/:email", verifyFirebaseToken, async (req, res) => {
       try {
         const email = req.params.email;
         if (!email) {
@@ -145,7 +145,7 @@ async function run() {
 
 
     // Get all users 
-    app.get("/api/users", verifyFirebaseToken, async (req, res) => {
+    app.get("/users", verifyFirebaseToken, async (req, res) => {
       try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 5;
@@ -175,7 +175,7 @@ async function run() {
 
 
     // Update user role (only admin can do this)
-    app.put("/api/users/:email/role", verifyFirebaseToken, verifyAdmin, async (req, res) => {
+    app.put("/users/:email/role", verifyFirebaseToken, verifyAdmin, async (req, res) => {
       try {
         const targetEmail = req.params.email;
         const { role } = req.body;
@@ -203,7 +203,7 @@ async function run() {
 
 
     // Add new package (Admin only)
-    app.post("/api/packages", verifyFirebaseToken, async (req, res) => {
+    app.post("/packages", verifyFirebaseToken, async (req, res) => {
       try {
         const newPackage = req.body;
 
@@ -226,7 +226,7 @@ async function run() {
 
 
 
-    app.get("/api/packages", async (req, res) => {
+    app.get("/packages", async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 0;
 
@@ -246,7 +246,7 @@ async function run() {
 
 
     // Update package
-    app.put("/api/packages/:id", verifyFirebaseToken, async (req, res) => {
+    app.put("/packages/:id", verifyFirebaseToken, async (req, res) => {
       try {
         const id = req.params.id;
         const updates = req.body;
@@ -269,7 +269,7 @@ async function run() {
     });
 
     // Delete package (string IDs)
-    app.delete("/api/packages/:id", verifyFirebaseToken, async (req, res) => {
+    app.delete("/packages/:id", verifyFirebaseToken, async (req, res) => {
       try {
         const id = req.params.id;
         const result = await packagesCollection.deleteOne({ _id: new ObjectId(id) });
@@ -288,7 +288,7 @@ async function run() {
 
 
     // Get single package by ID
-    app.get("/api/packages/:id", async (req, res) => {
+    app.get("/packages/:id", async (req, res) => {
       try {
 
         const id = req.params.id;
@@ -313,7 +313,7 @@ async function run() {
 
 
     // --- ADD Resort ---
-    app.post("/api/resorts", verifyFirebaseToken, async (req, res) => {
+    app.post("/resorts", verifyFirebaseToken, async (req, res) => {
       try {
         const newResort = req.body;
 
@@ -333,7 +333,7 @@ async function run() {
     });
 
     // Get all resorts (for carousel and listing)
-app.get("/api/resorts", async (req, res) => {
+app.get("/resorts", async (req, res) => {
   try {
   //  support limit query param for carousel
     const limit = parseInt(req.query.limit) || 0;
@@ -356,7 +356,7 @@ app.get("/api/resorts", async (req, res) => {
 });
 
     // --- GET Resort by ID ---
-    app.get("/api/resorts/:id", async (req, res) => {
+    app.get("/resorts/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -388,7 +388,7 @@ app.get("/api/resorts", async (req, res) => {
 
 
 // update resort 
-app.put("/api/resorts/:id", verifyFirebaseToken, async (req, res) => {
+app.put("/resorts/:id", verifyFirebaseToken, async (req, res) => {
   try {
     const id = req.params.id;
     const updates = req.body;
@@ -419,7 +419,7 @@ app.put("/api/resorts/:id", verifyFirebaseToken, async (req, res) => {
 
 
 // delete resort 
-app.delete("/api/resorts/:id", verifyFirebaseToken, async (req, res) => {
+app.delete("/resorts/:id", verifyFirebaseToken, async (req, res) => {
   try {
     const id = req.params.id;
 
@@ -446,7 +446,7 @@ app.delete("/api/resorts/:id", verifyFirebaseToken, async (req, res) => {
 // ----------------------payment api-------------------------------------------------- 
 
 // Create PaymentIntent 
-app.post("/api/create-payment-intent", verifyFirebaseToken, async (req, res) => {
+app.post("/create-payment-intent", verifyFirebaseToken, async (req, res) => {
   try {
     const { itemType, itemId, nights, guests, startDate } = req.body;
     if (!itemType || !itemId) return res.status(400).json({ error: "Missing itemType or itemId" });
@@ -500,7 +500,7 @@ app.post("/api/create-payment-intent", verifyFirebaseToken, async (req, res) => 
 });
 
 // Confirm booking after payment (authenticated)
-app.post("/api/bookings/confirm", verifyFirebaseToken, async (req, res) => {
+app.post("/bookings/confirm", verifyFirebaseToken, async (req, res) => {
   try {
     const { paymentIntentId, itemType, itemId, nights, guests, startDate, note } = req.body;
     if (!paymentIntentId || !itemType || !itemId) return res.status(400).json({ error: "Missing fields" });
@@ -573,10 +573,10 @@ app.post("/api/bookings/confirm", verifyFirebaseToken, async (req, res) => {
 // ---------------api for bookings---------------------------------------------- 
 
 /**
- * GET /api/bookings/user
+ * GET /bookings/user
 
  */
-app.get("/api/bookings/user", verifyFirebaseToken, async (req, res) => {
+app.get("/bookings/user", verifyFirebaseToken, async (req, res) => {
   try {
     const email = req.firebaseUser?.email;
     if (!email) return res.status(400).json({ error: "Invalid user" });
@@ -599,10 +599,10 @@ app.get("/api/bookings/user", verifyFirebaseToken, async (req, res) => {
 });
 
 /**
- * DELETE /api/bookings/:id
+ * DELETE /bookings/:id
  * - Allow user to cancel their own booking OR an admin to delete
  */
-app.delete("/api/bookings/:id", verifyFirebaseToken, async (req, res) => {
+app.delete("/bookings/:id", verifyFirebaseToken, async (req, res) => {
   try {
     const id = req.params.id;
     if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid booking id" });
@@ -632,11 +632,11 @@ app.delete("/api/bookings/:id", verifyFirebaseToken, async (req, res) => {
 });
 
 /**
- * GET /api/bookings
+ * GET /bookings
  * - Admin route: list all bookings
  * - supports optional pagination: ?page=1&limit=20
  */
-app.get("/api/bookings", verifyFirebaseToken, verifyAdmin, async (req, res) => {
+app.get("/bookings", verifyFirebaseToken, verifyAdmin, async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.max(1, parseInt(req.query.limit) || 20);
@@ -665,10 +665,10 @@ app.get("/api/bookings", verifyFirebaseToken, verifyAdmin, async (req, res) => {
 });
 
 /**
- * GET /api/bookings/:id
+ * GET /bookings/:id
  * - Admin route: get single booking by id
  */
-app.get("/api/bookings/:id", verifyFirebaseToken, verifyAdmin, async (req, res) => {
+app.get("/bookings/:id", verifyFirebaseToken, verifyAdmin, async (req, res) => {
   try {
     const id = req.params.id;
     if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid booking id" });
@@ -690,10 +690,10 @@ app.get("/api/bookings/:id", verifyFirebaseToken, verifyAdmin, async (req, res) 
 });
 
 /**
- * PUT /api/bookings/:id/status
+ * PUT /bookings/:id/status
  * - Admin: update booking status (pending/confirmed/cancelled/completed)
  */
-// app.put("/api/bookings/:id/status", verifyFirebaseToken, verifyAdmin, async (req, res) => {
+// app.put("/bookings/:id/status", verifyFirebaseToken, verifyAdmin, async (req, res) => {
 //   try {
 //     const id = req.params.id;
 //     const { status } = req.body;
@@ -721,7 +721,7 @@ app.get("/api/bookings/:id", verifyFirebaseToken, verifyAdmin, async (req, res) 
 
 
 // Admin overview: counts and simple percent changes
-app.get("/api/admin/overview", verifyFirebaseToken, verifyAdmin, async (req, res) => {
+app.get("/admin/overview", verifyFirebaseToken, verifyAdmin, async (req, res) => {
   try {
     const days = parseInt(req.query.days) || 30;
 
@@ -797,7 +797,7 @@ app.get("/api/admin/overview", verifyFirebaseToken, verifyAdmin, async (req, res
 
 
 // Admin: get bookings (paginated or limited)
-app.get("/api/bookings", verifyFirebaseToken, verifyAdmin, async (req, res) => {
+app.get("/bookings", verifyFirebaseToken, verifyAdmin, async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.max(1, parseInt(req.query.limit) || 10);
@@ -824,7 +824,7 @@ app.get("/api/bookings", verifyFirebaseToken, verifyAdmin, async (req, res) => {
 
 
 // Delete booking - allow admin or owner (owner authenticated)
-app.delete("/api/bookings/:id", verifyFirebaseToken, async (req, res) => {
+app.delete("/bookings/:id", verifyFirebaseToken, async (req, res) => {
   try {
     const id = req.params.id;
     if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid booking id" });
