@@ -174,7 +174,7 @@ async function run() {
 
 
 
-    // Update user role (only admin can do this)
+    // Update user role
     app.put("/users/:email/role", verifyFirebaseToken, verifyAdmin, async (req, res) => {
       try {
         const targetEmail = req.params.email;
@@ -202,7 +202,7 @@ async function run() {
 
 
 
-    // Add new package (Admin only)
+    // Add new package 
     app.post("/packages", verifyFirebaseToken, async (req, res) => {
       try {
         const newPackage = req.body;
@@ -232,7 +232,7 @@ async function run() {
 
     const packages = await packagesCollection
       .find()
-      .sort({ createdAt: -1 })   // newest first
+      .sort({ createdAt: -1 })  
       .limit(limit)
       .toArray();
 
@@ -253,7 +253,7 @@ async function run() {
         delete updates._id;
 
         const result = await packagesCollection.updateOne(
-          { _id: new ObjectId(id) },   // ✅ match by ObjectId
+          { _id: new ObjectId(id) },   
           { $set: { ...updates, updatedAt: new Date() } }
         );
 
@@ -268,7 +268,7 @@ async function run() {
       }
     });
 
-    // Delete package (string IDs)
+    // Delete package 
     app.delete("/packages/:id", verifyFirebaseToken, async (req, res) => {
       try {
         const id = req.params.id;
@@ -374,7 +374,7 @@ app.get("/resorts", async (req, res) => {
       return res.status(404).json({ message: "Resort not found" });
     }
 
-    // Optional: trim amenities spaces before sending
+    // trim amenities spaces before sending
     if (Array.isArray(resort.amenities)) {
       resort.amenities = resort.amenities.map((a) => a.trim());
     }
@@ -393,7 +393,6 @@ app.put("/resorts/:id", verifyFirebaseToken, async (req, res) => {
     const id = req.params.id;
     const updates = req.body;
 
-    // Prevent _id modification
     delete updates._id;
 
     // Convert id to ObjectId
@@ -583,7 +582,7 @@ app.get("/bookings/user", verifyFirebaseToken, async (req, res) => {
 
     const docs = await bookingsCollection.find({ userEmail: email }).sort({ createdAt: -1 }).toArray();
 
-    // Normalize _id -> string and dates -> ISO
+    
     const bookings = docs.map((b) => ({
       ...b,
       _id: b._id?.toString?.() ?? b._id,
@@ -600,7 +599,6 @@ app.get("/bookings/user", verifyFirebaseToken, async (req, res) => {
 
 /**
  * DELETE /bookings/:id
- * - Allow user to cancel their own booking OR an admin to delete
  */
 app.delete("/bookings/:id", verifyFirebaseToken, async (req, res) => {
   try {
@@ -611,7 +609,7 @@ app.delete("/bookings/:id", verifyFirebaseToken, async (req, res) => {
     if (!booking) return res.status(404).json({ error: "Booking not found" });
 
     const requesterEmail = req.firebaseUser?.email;
-    // owner allowed OR admin allowed
+  
     if (booking.userEmail !== requesterEmail) {
       const currentUser = await usersCollection.findOne({ email: requesterEmail });
       if (!currentUser || currentUser.role !== "admin") {
@@ -631,11 +629,7 @@ app.delete("/bookings/:id", verifyFirebaseToken, async (req, res) => {
   }
 });
 
-/**
- * GET /bookings
- * - Admin route: list all bookings
- * - supports optional pagination: ?page=1&limit=20
- */
+
 app.get("/bookings", verifyFirebaseToken, verifyAdmin, async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -664,10 +658,7 @@ app.get("/bookings", verifyFirebaseToken, verifyAdmin, async (req, res) => {
   }
 });
 
-/**
- * GET /bookings/:id
- * - Admin route: get single booking by id
- */
+// Get booking by ID - admin only
 app.get("/bookings/:id", verifyFirebaseToken, verifyAdmin, async (req, res) => {
   try {
     const id = req.params.id;
@@ -689,33 +680,6 @@ app.get("/bookings/:id", verifyFirebaseToken, verifyAdmin, async (req, res) => {
   }
 });
 
-/**
- * PUT /bookings/:id/status
- * - Admin: update booking status (pending/confirmed/cancelled/completed)
- */
-// app.put("/bookings/:id/status", verifyFirebaseToken, verifyAdmin, async (req, res) => {
-//   try {
-//     const id = req.params.id;
-//     const { status } = req.body;
-//     if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid booking id" });
-//     const allowed = ["pending", "confirmed", "cancelled", "completed"];
-//     if (!allowed.includes(status)) return res.status(400).json({ error: "Invalid status" });
-
-//     const result = await bookingsCollection.updateOne(
-//       { _id: new ObjectId(id) },
-//       { $set: { status, updatedAt: new Date() } }
-//     );
-
-//     if (result.matchedCount === 0) return res.status(404).json({ error: "Booking not found" });
-
-//     res.json({ message: "Booking status updated" });
-//   } catch (err) {
-//     console.error("❌ Error updating booking status:", err);
-//     res.status(500).json({ error: "Failed to update booking status" });
-//   }
-// });
-
-
 
 
 
@@ -733,7 +697,7 @@ app.get("/admin/overview", verifyFirebaseToken, verifyAdmin, async (req, res) =>
     const prevStart = new Date(prevEnd);
     prevStart.setDate(prevEnd.getDate() - days);
 
-    // safe count helper
+    
     const safeCount = async (collection, filter = {}) => {
       if (!collection) return 0;
       try {
@@ -744,7 +708,7 @@ app.get("/admin/overview", verifyFirebaseToken, verifyAdmin, async (req, res) =>
       }
     };
 
-    // Bookings in current and previous periods (assumes bookingsCollection has createdAt: Date)
+    // Bookings in current and previous periods 
     const totalBookings = await safeCount(bookingsCollection, {
       createdAt: { $gte: start, $lt: end },
     });
@@ -796,7 +760,7 @@ app.get("/admin/overview", verifyFirebaseToken, verifyAdmin, async (req, res) =>
 
 
 
-// Admin: get bookings (paginated or limited)
+// Admin: get bookings
 app.get("/bookings", verifyFirebaseToken, verifyAdmin, async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -821,9 +785,7 @@ app.get("/bookings", verifyFirebaseToken, verifyAdmin, async (req, res) => {
 });
 
 
-
-
-// Delete booking - allow admin or owner (owner authenticated)
+// Delete booking 
 app.delete("/bookings/:id", verifyFirebaseToken, async (req, res) => {
   try {
     const id = req.params.id;
@@ -832,7 +794,7 @@ app.delete("/bookings/:id", verifyFirebaseToken, async (req, res) => {
     const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
     if (!booking) return res.status(404).json({ error: "Booking not found" });
 
-    // owner or admin
+   
     const requesterEmail = req.firebaseUser?.email;
     if (booking.userEmail !== requesterEmail) {
       const currentUser = await usersCollection.findOne({ email: requesterEmail });
