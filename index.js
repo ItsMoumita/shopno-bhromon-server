@@ -124,24 +124,59 @@ async function run() {
 
 
     // Get user by email (for dashboard)
-    app.get("/users/:email", verifyFirebaseToken, async (req, res) => {
-      try {
-        const email = req.params.email;
-        if (!email) {
-          return res.status(400).json({ error: "Email is required" });
-        }
+   app.get("/users/:email", verifyFirebaseToken, async (req, res) => {
+  try {
+    const targetEmail = req.params.email;
+    if (!targetEmail) {
+      return res.status(400).json({ error: "Email is required" });
+    }
 
-        const user = await usersCollection.findOne({ email });
-        if (!user) {
-          return res.status(404).json({ message: "User not found" });
-        }
+    const user = await usersCollection.findOne({ email: targetEmail });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-        res.json(user);
-      } catch (err) {
-        console.error("❌ Error fetching user:", err);
-        res.status(500).json({ error: err.message });
-      }
-    });
+    // --- Profile Picture Normalization Logic (Same as for GET /users?recent) ---
+    const gravatarUrl = (email) => {
+      if (!email) return null;
+      const hash = crypto.createHash("md5").update(email.trim().toLowerCase()).digest("hex");
+      return `https://www.gravatar.com/avatar/${hash}?d=identicon&s=200`;
+    };
+
+    const PLACEHOLDER = "https://placehold.co/200x200/cccccc/555555?text=User";
+
+    const normalizeProfilePic = (raw) => {
+      if (!raw) return null;
+      const s = String(raw).trim();
+      // Fix common typos/malformed URLs if any
+      const fixed = s.replaceAll(".ibb.co.com", ".ibb.co");
+      if (/^https?:\/\//i.test(fixed)) return fixed; // Is it a valid http(s) URL?
+      return null; // Not a valid web URL
+    };
+
+    const profilePic =
+      normalizeProfilePic(user.profilePic) || // Check user.profilePic first
+      normalizeProfilePic(user.photoURL) ||   // Then check user.photoURL from Firebase
+      gravatarUrl(user.email) ||              // Then generate Gravatar
+      PLACEHOLDER;                            // Finally, a generic placeholder
+
+    // Construct the user object to send to the frontend
+    const userResponse = {
+      _id: user._id?.toString ? user._id.toString() : user._id, // Ensure _id is string
+      name: user.name || user.displayName || null, // Prefer DB name, fallback to Firebase's displayName
+      email: user.email || null,
+      role: user.role || "user", // Default role if not set
+      profilePic: profilePic, // The normalized and reliable profile picture URL
+      createdAt: user.createdAt ? user.createdAt.toISOString() : null,
+      // Add any other user fields you want to expose
+    };
+
+    res.json(userResponse);
+  } catch (err) {
+    console.error("❌ Error fetching user:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 
     // Get all users 
