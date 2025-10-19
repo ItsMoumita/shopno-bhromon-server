@@ -136,7 +136,6 @@ async function run() {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // --- Profile Picture Normalization Logic (Same as for GET /users?recent) ---
     const gravatarUrl = (email) => {
       if (!email) return null;
       const hash = crypto.createHash("md5").update(email.trim().toLowerCase()).digest("hex");
@@ -148,27 +147,26 @@ async function run() {
     const normalizeProfilePic = (raw) => {
       if (!raw) return null;
       const s = String(raw).trim();
-      // Fix common typos/malformed URLs if any
       const fixed = s.replaceAll(".ibb.co.com", ".ibb.co");
-      if (/^https?:\/\//i.test(fixed)) return fixed; // Is it a valid http(s) URL?
-      return null; // Not a valid web URL
+      if (/^https?:\/\//i.test(fixed)) return fixed; 
+      return null; 
     };
 
     const profilePic =
-      normalizeProfilePic(user.profilePic) || // Check user.profilePic first
-      normalizeProfilePic(user.photoURL) ||   // Then check user.photoURL from Firebase
-      gravatarUrl(user.email) ||              // Then generate Gravatar
-      PLACEHOLDER;                            // Finally, a generic placeholder
+      normalizeProfilePic(user.profilePic) || 
+      normalizeProfilePic(user.photoURL) ||   
+      gravatarUrl(user.email) ||              
+      PLACEHOLDER;                          
 
     // Construct the user object to send to the frontend
     const userResponse = {
-      _id: user._id?.toString ? user._id.toString() : user._id, // Ensure _id is string
-      name: user.name || user.displayName || null, // Prefer DB name, fallback to Firebase's displayName
+      _id: user._id?.toString ? user._id.toString() : user._id, 
+      name: user.name || user.displayName || null,
       email: user.email || null,
-      role: user.role || "user", // Default role if not set
-      profilePic: profilePic, // The normalized and reliable profile picture URL
+      role: user.role || "user", 
+      profilePic: profilePic, 
       createdAt: user.createdAt ? user.createdAt.toISOString() : null,
-      // Add any other user fields you want to expose
+      
     };
 
     res.json(userResponse);
