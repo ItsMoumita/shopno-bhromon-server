@@ -14,6 +14,7 @@ app.use(cors({
     'http://localhost:5173',
     'https://shopno-bhromon.web.app'
   ],
+   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
 }));
 app.use(express.json());
@@ -124,57 +125,24 @@ async function run() {
 
 
     // Get user by email (for dashboard)
-   app.get("/users/:email", verifyFirebaseToken, async (req, res) => {
-  try {
-    const targetEmail = req.params.email;
-    if (!targetEmail) {
-      return res.status(400).json({ error: "Email is required" });
-    }
+    app.get("/users/:email", verifyFirebaseToken, async (req, res) => {
+      try {
+        const email = req.params.email;
+        if (!email) {
+          return res.status(400).json({ error: "Email is required" });
+        }
 
-    const user = await usersCollection.findOne({ email: targetEmail });
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+        const user = await usersCollection.findOne({ email });
+        if (!user) {
+          return res.status(404).json({ message: "User not found" });
+        }
 
-    const gravatarUrl = (email) => {
-      if (!email) return null;
-      const hash = crypto.createHash("md5").update(email.trim().toLowerCase()).digest("hex");
-      return `https://www.gravatar.com/avatar/${hash}?d=identicon&s=200`;
-    };
-
-    const PLACEHOLDER = "https://placehold.co/200x200/cccccc/555555?text=User";
-
-    const normalizeProfilePic = (raw) => {
-      if (!raw) return null;
-      const s = String(raw).trim();
-      const fixed = s.replaceAll(".ibb.co.com", ".ibb.co");
-      if (/^https?:\/\//i.test(fixed)) return fixed; 
-      return null; 
-    };
-
-    const profilePic =
-      normalizeProfilePic(user.profilePic) || 
-      normalizeProfilePic(user.photoURL) ||   
-      gravatarUrl(user.email) ||              
-      PLACEHOLDER;                          
-
-    // Construct the user object to send to the frontend
-    const userResponse = {
-      _id: user._id?.toString ? user._id.toString() : user._id, 
-      name: user.name || user.displayName || null,
-      email: user.email || null,
-      role: user.role || "user", 
-      profilePic: profilePic, 
-      createdAt: user.createdAt ? user.createdAt.toISOString() : null,
-      
-    };
-
-    res.json(userResponse);
-  } catch (err) {
-    console.error("❌ Error fetching user:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
+        res.json(user);
+      } catch (err) {
+        console.error("❌ Error fetching user:", err);
+        res.status(500).json({ error: err.message });
+      }
+    });
 
 
     // Get all users 
